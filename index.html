@@ -20,23 +20,25 @@ input[type=text] { width:100%; padding:8px; margin-top:5px; }
 
 <h2>Synthomer CSV Date Fixer (PC1 / P11)</h2>
 
-<!-- Site selection -->
+<!-- Site Selection -->
 <div class="section">
   <strong>Select Site:</strong><br><br>
   <label><input type="radio" name="site" value="PC1" checked> PC1 System</label>
   <label><input type="radio" name="site" value="P11"> P11 System</label>
 </div>
 
-<!-- Save-as prefix -->
+<!-- Save As Location -->
 <div class="section">
   <strong>Save As Location (prefix only):</strong>
   <input type="text" id="saveLocationInput" placeholder="e.g. \\server\\folder\\ or C:\\Users\\You\\Downloads\\" />
+  <button id="browseBtn" type="button">Browse…</button>
+
   <div id="currentSaveLoc" style="margin-top:8px; color:#444; font-size:14px;">
     Current: (not set)
   </div>
 </div>
 
-<!-- File input -->
+<!-- File Input -->
 <div class="section">
   <input type="file" id="fileInput" accept=".csv">
 </div>
@@ -46,9 +48,9 @@ input[type=text] { width:100%; padding:8px; margin-top:5px; }
 <div id="summary" class="summaryBox" style="display:none;"></div>
 
 <script>
-// -------------------
-// Save Location
-// -------------------
+// ------------------------------
+// Load Save Location at Startup
+// ------------------------------
 function loadSaveLocation() {
   const loc = localStorage.getItem("saveLocation") || "";
   document.getElementById("saveLocationInput").value = loc;
@@ -60,6 +62,7 @@ function updateSaveLocationDisplay(loc) {
     "Current: " + (loc === "" ? "(not set)" : loc);
 }
 
+// Save when typing
 document.getElementById("saveLocationInput").addEventListener("input", (e) => {
   const value = e.target.value;
   localStorage.setItem("saveLocation", value);
@@ -68,24 +71,52 @@ document.getElementById("saveLocationInput").addEventListener("input", (e) => {
 
 loadSaveLocation();
 
-// -------------------
-// Site
-// -------------------
+// ------------------------------
+// Folder Picker (Chrome / Edge)
+// ------------------------------
+document.getElementById("browseBtn").addEventListener("click", async () => {
+  if (!window.showDirectoryPicker) {
+    alert("Your browser does not support folder selection.");
+    return;
+  }
+
+  try {
+    const dirHandle = await window.showDirectoryPicker();
+    const folderName = dirHandle.name;
+
+    let prefix = localStorage.getItem("saveLocation") || "";
+
+    // Add slash if needed
+    if (!prefix.endsWith("/") && !prefix.endsWith("\\")) prefix += "/";
+
+    prefix += folderName + "/";
+
+    document.getElementById("saveLocationInput").value = prefix;
+    localStorage.setItem("saveLocation", prefix);
+    updateSaveLocationDisplay(prefix);
+  }
+  catch (err) {
+    console.log("Folder selection canceled or failed:", err);
+  }
+});
+
+// ------------------------------
+// Site Selection Helper
+// ------------------------------
 function getSelectedSite() {
   const radios = document.getElementsByName("site");
   for (let r of radios) if (r.checked) return r.value;
   return "unknown";
 }
 
-// Today as YYYY-MM-DD
 function todayISO() {
   const d = new Date();
   return d.toISOString().split("T")[0];
 }
 
-// -------------------
-// CSV Transformation
-// -------------------
+// ------------------------------
+// CSV Line Transformer
+// ------------------------------
 function processLine(line, isHeader, stats) {
   if (isHeader) {
     stats.skipped++;
@@ -100,7 +131,7 @@ function processLine(line, isHeader, stats) {
       '^((?:"(?:[^"]|"")*",){' + (col-1) + '}")' +
       '(\\d{2})\\/(\\d{2})\\/(\\d{4}) \\d{2}:\\d{2}:\\d{2}(".*)$'
     );
-    return s.replace(re, (m,p1,d,mth,y,p2)=>`${p1}${y}-${mth}-${d}${p2}`);
+    return s.replace(re,(m,p1,d,mth,y,p2)=>`${p1}${y}-${mth}-${d}${p2}`);
   }
 
   function fixDateOnly(s, col) {
@@ -108,7 +139,7 @@ function processLine(line, isHeader, stats) {
       '^((?:"(?:[^"]|"")*",){' + (col-1) + '}")' +
       '(\\d{2})\\/(\\d{2})\\/(\\d{4})(".*)$'
     );
-    return s.replace(re, (m,p1,d,mth,y,p2)=>`${p1}${y}-${mth}-${d}${p2}`);
+    return s.replace(re,(m,p1,d,mth,y,p2)=>`${p1}${y}-${mth}-${d}${p2}`);
   }
 
   out = fixDateWithTime(out, 3);
@@ -122,9 +153,9 @@ function processLine(line, isHeader, stats) {
   return out;
 }
 
-// ------------------
-// Main processing
-// ------------------
+// ------------------------------
+// Process File
+// ------------------------------
 function processFile() {
   const file = document.getElementById('fileInput').files[0];
   if (!file) { alert("Please choose a CSV file."); return; }
@@ -137,10 +168,8 @@ function processFile() {
 
   const reader = new FileReader();
   reader.onload = function(e) {
-    const text = e.target.result;
-    const lines = text.split(/\r?\n/);
+    const lines = e.target.result.split(/\r?\n/);
 
-    // Stats tracking
     const stats = {
       total: lines.length,
       changed: 0,
@@ -148,9 +177,7 @@ function processFile() {
       skipped: 0
     };
 
-    const outLines = lines.map((l,i) =>
-      processLine(l, i === 0, stats)
-    );
+    const outLines = lines.map((l,i)=>processLine(l, i === 0, stats));
     const out = outLines.join("\n");
 
     // Show summary
@@ -163,7 +190,7 @@ function processFile() {
       `Unchanged lines: ${stats.unchanged}\n` +
       `Output filename: ${outName}`;
 
-    // Download blob
+    // Trigger download
     const blob = new Blob([out], {type:"text/csv"});
     const url = URL.createObjectURL(blob);
 
