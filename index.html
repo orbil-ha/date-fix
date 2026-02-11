@@ -4,96 +4,176 @@
 <meta charset="UTF-8">
 <title>Synthomer CSV Date Fixer</title>
 <style>
-body { font-family:sans-serif; margin:40px; max-width:800px; }
+body { font-family:sans-serif; margin:40px; max-width:850px; }
 h2 { color:#0055aa; }
 button { padding:10px 25px; margin-top:15px; cursor:pointer; }
 .section { margin-bottom:20px; }
+label { display:block; margin-top:6px; }
+input[type=text] { width:100%; padding:8px; margin-top:5px; }
+.summaryBox {
+  background:#eef7ff; border:1px solid #aaccee; padding:12px; margin-top:20px;
+  white-space:pre-line;
+}
 </style>
 </head>
 <body>
 
 <h2>Synthomer CSV Date Fixer (PC1 / P11)</h2>
 
+<!-- Site selection -->
 <div class="section">
   <strong>Select Site:</strong><br><br>
-  <label>
-    <input type="radio" name="site" value="PC1" checked>
-    PC1 System
-  </label><br>
-  <label>
-    <input type="radio" name="site" value="P11">
-    P11 System
-  </label>
+  <label><input type="radio" name="site" value="PC1" checked> PC1 System</label>
+  <label><input type="radio" name="site" value="P11"> P11 System</label>
 </div>
 
+<!-- Save-as prefix -->
+<div class="section">
+  <strong>Save As Location (prefix only):</strong>
+  <input type="text" id="saveLocationInput" placeholder="e.g. \\server\\folder\\ or C:\\Users\\You\\Downloads\\" />
+  <div id="currentSaveLoc" style="margin-top:8px; color:#444; font-size:14px;">
+    Current: (not set)
+  </div>
+</div>
+
+<!-- File input -->
 <div class="section">
   <input type="file" id="fileInput" accept=".csv">
 </div>
 
 <button onclick="processFile()">Fix Dates & Download</button>
 
+<div id="summary" class="summaryBox" style="display:none;"></div>
+
 <script>
-function processLine(line, isHeader) {
-    if (isHeader) return line;
-
-    function fixDateWithTime(s, col) {
-        const re = new RegExp(
-          '^((?:"(?:[^"]|"")*",){' + (col-1) + '}")' +
-          '(\\d{2})\\/(\\d{2})\\/(\\d{4}) \\d{2}:\\d{2}:\\d{2}(".*)$'
-        );
-        return s.replace(re, (m,p1,d,mth,y,p2) => `${p1}${y}-${mth}-${d}${p2}`);
-    }
-
-    function fixDateOnly(s, col) {
-        const re = new RegExp(
-          '^((?:"(?:[^"]|"")*",){' + (col-1) + '}")' +
-          '(\\d{2})\\/(\\d{2})\\/(\\d{4})(".*)$'
-        );
-        return s.replace(re, (m,p1,d,mth,y,p2) => `${p1}${y}-${mth}-${d}${p2}`);
-    }
-
-    let out = line;
-    out = fixDateWithTime(out, 3);
-    out = fixDateWithTime(out, 4);
-    out = fixDateOnly(out, 11);
-    out = fixDateOnly(out, 13);
-    return out;
+// -------------------
+// Save Location
+// -------------------
+function loadSaveLocation() {
+  const loc = localStorage.getItem("saveLocation") || "";
+  document.getElementById("saveLocationInput").value = loc;
+  updateSaveLocationDisplay(loc);
 }
 
+function updateSaveLocationDisplay(loc) {
+  document.getElementById("currentSaveLoc").textContent =
+    "Current: " + (loc === "" ? "(not set)" : loc);
+}
+
+document.getElementById("saveLocationInput").addEventListener("input", (e) => {
+  const value = e.target.value;
+  localStorage.setItem("saveLocation", value);
+  updateSaveLocationDisplay(value);
+});
+
+loadSaveLocation();
+
+// -------------------
+// Site
+// -------------------
 function getSelectedSite() {
-    const radios = document.getElementsByName("site");
-    for (let r of radios) if (r.checked) return r.value;
-    return "unknown";
+  const radios = document.getElementsByName("site");
+  for (let r of radios) if (r.checked) return r.value;
+  return "unknown";
 }
 
+// Today as YYYY-MM-DD
 function todayISO() {
-    const d = new Date();
-    return d.toISOString().split("T")[0];
+  const d = new Date();
+  return d.toISOString().split("T")[0];
 }
 
+// -------------------
+// CSV Transformation
+// -------------------
+function processLine(line, isHeader, stats) {
+  if (isHeader) {
+    stats.skipped++;
+    return line;
+  }
+
+  let original = line;
+  let out = line;
+
+  function fixDateWithTime(s, col) {
+    const re = new RegExp(
+      '^((?:"(?:[^"]|"")*",){' + (col-1) + '}")' +
+      '(\\d{2})\\/(\\d{2})\\/(\\d{4}) \\d{2}:\\d{2}:\\d{2}(".*)$'
+    );
+    return s.replace(re, (m,p1,d,mth,y,p2)=>`${p1}${y}-${mth}-${d}${p2}`);
+  }
+
+  function fixDateOnly(s, col) {
+    const re = new RegExp(
+      '^((?:"(?:[^"]|"")*",){' + (col-1) + '}")' +
+      '(\\d{2})\\/(\\d{2})\\/(\\d{4})(".*)$'
+    );
+    return s.replace(re, (m,p1,d,mth,y,p2)=>`${p1}${y}-${mth}-${d}${p2}`);
+  }
+
+  out = fixDateWithTime(out, 3);
+  out = fixDateWithTime(out, 4);
+  out = fixDateOnly(out, 11);
+  out = fixDateOnly(out, 13);
+
+  if (out !== original) stats.changed++;
+  else stats.unchanged++;
+
+  return out;
+}
+
+// ------------------
+// Main processing
+// ------------------
 function processFile() {
-    const file = document.getElementById('fileInput').files[0];
-    if (!file) { alert("Please choose a CSV file."); return; }
+  const file = document.getElementById('fileInput').files[0];
+  if (!file) { alert("Please choose a CSV file."); return; }
 
-    const site = getSelectedSite();
-    const date = todayISO();
-    const outName = `synthomer_${site}_ESKER_${date}.csv`;
+  const site = getSelectedSite();
+  const date = todayISO();
 
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const lines = e.target.result.split(/\r?\n/);
-        const outLines = lines.map((l,i) => processLine(l, i === 0));
-        const out = outLines.join("\n");
+  const savePrefix = localStorage.getItem("saveLocation") || "";
+  const outName = `${savePrefix}synthomer_${site}_ESKER_${date}.csv`;
 
-        const blob = new Blob([out], {type:"text/csv"});
-        const url = URL.createObjectURL(blob);
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const text = e.target.result;
+    const lines = text.split(/\r?\n/);
 
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = outName;
-        a.click();
+    // Stats tracking
+    const stats = {
+      total: lines.length,
+      changed: 0,
+      unchanged: 0,
+      skipped: 0
     };
-    reader.readAsText(file);
+
+    const outLines = lines.map((l,i) =>
+      processLine(l, i === 0, stats)
+    );
+    const out = outLines.join("\n");
+
+    // Show summary
+    const sum = document.getElementById("summary");
+    sum.style.display = "block";
+    sum.textContent =
+      `Total lines: ${stats.total}\n` +
+      `Header skipped: ${stats.skipped}\n` +
+      `Changed lines: ${stats.changed}\n` +
+      `Unchanged lines: ${stats.unchanged}\n` +
+      `Output filename: ${outName}`;
+
+    // Download blob
+    const blob = new Blob([out], {type:"text/csv"});
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = outName;
+    a.click();
+  };
+
+  reader.readAsText(file);
 }
 </script>
 
