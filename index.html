@@ -1,161 +1,246 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Synthomer CSV Date Fixer</title>
+<meta charset="UTF-8" />
+<title>ESKER .csv Date Fix</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
 <style>
-body { font-family:sans-serif; margin:40px; max-width:850px; }
-h2 { color:#0055aa; }
-button { padding:10px 25px; margin-top:15px; cursor:pointer; }
-.section { margin-bottom:20px; }
-label { display:block; margin-top:6px; }
-input[type=file] { margin-top:10px; }
-.summaryBox {
-  background:#eef7ff; border:1px solid #aaccee; padding:12px; margin-top:20px;
-  white-space:pre-line;
+/* ------------------------------------
+   Apple‑Inspired Minimal Clean Styling
+------------------------------------- */
+body {
+    margin: 0;
+    padding: 40px;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Arial, sans-serif;
+    background: #f5f5f7;
+    color: #1d1d1f;
+    display: flex;
+    justify-content: center;
 }
-#saveBtn { display:none; }
+
+.container {
+    max-width: 820px;
+    width: 100%;
+}
+
+h1 {
+    font-size: 32px;
+    text-align: center;
+    font-weight: 600;
+    margin-bottom: 25px;
+}
+
+.card {
+    background: white;
+    border-radius: 18px;
+    padding: 24px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+}
+
+.section {
+    margin-bottom: 25px;
+}
+
+.section strong {
+    display: block;
+    font-size: 17px;
+    margin-bottom: 12px;
+}
+
+.segmented {
+    display: inline-flex;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #c7c7cc;
+}
+
+.segment {
+    padding: 10px 22px;
+    cursor: pointer;
+    background: #f2f2f7;
+}
+
+.segment.active {
+    background: #0071e3;
+    color: white;
+}
+
+input[type="date"],
+input[type="file"] {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #d2d2d7;
+    border-radius: 10px;
+    font-size: 16px;
+    margin-top: 8px;
+}
+
+button {
+    width: 100%;
+    padding: 14px;
+    font-size: 17px;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    margin-top: 12px;
+    background: #0071e3;
+    color: white;
+    font-weight: 500;
+}
+button:hover {
+    background: #0a84ff;
+}
+
+.summaryBox {
+    white-space: pre-line;
+    padding: 16px;
+    border-radius: 14px;
+    background: #f0f6ff;
+    border: 1px solid #aaccee;
+    margin-top: 15px;
+    font-family: Menlo, Consolas, monospace;
+    display: none;
+}
 </style>
 </head>
+
 <body>
+<div class="container">
 
-<h2>Synthomer CSV Date Fixer (PC1 / P11)</h2>
+<h1>ESKER .csv Date Fix</h1>
 
-<!-- Step 1: Select Site -->
-<div class="section">
-  <strong>1. Select Site:</strong><br><br>
-  <label><input type="radio" name="site" value="PC1" checked> PC1 System</label>
-  <label><input type="radio" name="site" value="P11"> P11 System</label>
+<div class="card">
+
+    <!-- STEP 1 -->
+    <div class="section">
+        <strong>1. Select Site</strong>
+        <div class="segmented">
+            <div class="segment active" data-site="PC1">PC1 System</div>
+            <div class="segment" data-site="P11">P11 System</div>
+        </div>
+    </div>
+
+    <!-- STEP 2 -->
+    <div class="section">
+        <strong>2. Select Date for Output Filename</strong>
+        <input type="date" id="dateInput">
+    </div>
+
+    <!-- STEP 3 -->
+    <div class="section">
+        <strong>3. Choose CSV File</strong>
+        <input type="file" id="fileInput" accept=".csv">
+    </div>
+
+    <!-- STEP 4 -->
+    <button id="fixBtn">4. Fix Dates</button>
+
+    <div id="summary" class="summaryBox"></div>
+
+    <button id="saveBtn" style="display:none;">5. Download</button>
+    <button id="mailBtn" style="display:none;">Mail to: libor.martinek@synthomer.com</button>
+
 </div>
-
-<!-- Step 2: Choose CSV File -->
-<div class="section">
-  <strong>2. Choose CSV File:</strong><br>
-  <input type="file" id="fileInput" accept=".csv">
 </div>
-
-<!-- Step 3: Fix Dates -->
-<button id="fixBtn" onclick="fixDates()">3. Fix Dates</button>
-
-<!-- Step 4: Summary -->
-<div id="summary" class="summaryBox" style="display:none;"></div>
-
-<!-- Step 5: Save As Dialog -->
-<button id="saveBtn" onclick="saveFile()">4. Save As…</button>
 
 <script>
-// Global memory for processed output
+let selectedSite = "PC1";
 let processedCSV = "";
 
-// Helper: which site selected?
-function getSelectedSite() {
-  const radios = document.getElementsByName("site");
-  for (let r of radios) if (r.checked) return r.value;
-  return "unknown";
-}
+// Apple-style segmented control
+document.querySelectorAll('.segment').forEach(seg => {
+    seg.addEventListener("click", () => {
+        document.querySelectorAll('.segment').forEach(s => s.classList.remove('active'));
+        seg.classList.add('active');
+        selectedSite = seg.dataset.site;
+    });
+});
 
-// Today's date yyyy-mm-dd
-function todayISO() {
-  return new Date().toISOString().split("T")[0];
-}
+// Set today's date
+document.getElementById("dateInput").value = new Date().toISOString().split("T")[0];
 
-// Transform a line in the CSV
+// Your original date-fix logic (unchanged)
 function processLine(line, isHeader, stats) {
-  if (isHeader) {
-    stats.skipped++;
-    return line;
-  }
+    if (isHeader) { stats.skipped++; return line; }
 
-  let original = line;
-  let out = line;
+    let original = line;
+    let out = line;
 
-  function fixDateWithTime(s, col) {
-    const re = new RegExp(
-      '^((?:"(?:[^"]|"")*",){' + (col-1) + '}")' +
-      '(\\d{2})\\/(\\d{2})\\/(\\d{4}) \\d{2}:\\d{2}:\\d{2}(".*)$'
-    );
-    return s.replace(re,(m,p1,d,mth,y,p2)=>`${p1}${y}-${mth}-${d}${p2}`);
-  }
+    function fixDateWithTime(s, col) {
+        const re = new RegExp(
+          '^((?:"(?:[^"]|"")*",){' + (col-1) + '}")' +
+          '(\\d{2})\\/(\\d{2})\\/(\\d{4}) \\d{2}:\\d{2}:\\d{2}(".*)$'
+        );
+        return s.replace(re,(m,p1,d,mth,y,p2)=>`${p1}${y}-${mth}-${d}${p2}`);
+    }
 
-  function fixDateOnly(s, col) {
-    const re = new RegExp(
-      '^((?:"(?:[^"]|"")*",){' + (col-1) + '}")' +
-      '(\\d{2})\\/(\\d{2})\\/(\\d{4})(".*)$'
-    );
-    return s.replace(re,(m,p1,d,mth,y,p2)=>`${p1}${y}-${mth}-${d}${p2}`);
-  }
+    function fixDateOnly(s, col) {
+        const re = new RegExp(
+          '^((?:"(?:[^"]|"")*",){' + (col-1) + '}")' +
+          '(\\d{2})\\/(\\d{2})\\/(\\d{4})(".*)$'
+        );
+        return s.replace(re,(m,p1,d,mth,y,p2)=>`${p1}${y}-${mth}-${d}${p2}`);
+    }
 
-  out = fixDateWithTime(out, 3);
-  out = fixDateWithTime(out, 4);
-  out = fixDateOnly(out, 11);
-  out = fixDateOnly(out, 13);
+    out = fixDateWithTime(out, 3);
+    out = fixDateWithTime(out, 4);
+    out = fixDateOnly(out, 11);
+    out = fixDateOnly(out, 13);
 
-  if (out !== original) stats.changed++;
-  else stats.unchanged++;
-
-  return out;
+    if (out !== original) stats.changed++; else stats.unchanged++;
+    return out;
 }
 
-// MAIN: Process the file
-function fixDates() {
-  const file = document.getElementById('fileInput').files[0];
-  if (!file) {
-    alert("Please choose a CSV file first.");
-    return;
-  }
+// MAIN FIX FUNCTION
+document.getElementById("fixBtn").onclick = function() {
+    const file = document.getElementById("fileInput").files[0];
+    if (!file) return alert("Please select a CSV file.");
 
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    const text = e.target.result;
-    const lines = text.split(/\r?\n/);
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const lines = e.target.result.split(/\r?\n/);
+        const stats = { total: lines.length, changed: 0, unchanged: 0, skipped: 0 };
 
-    const stats = { total: lines.length, changed: 0, unchanged: 0, skipped: 0 };
+        const outLines = lines.map((l,i) => processLine(l, i===0, stats));
+        processedCSV = outLines.join("\n");
 
-    const outLines = lines.map((l,i)=>processLine(l, i===0, stats));
-    processedCSV = outLines.join("\n");
+        const date = document.getElementById("dateInput").value;
+        const outName = `synthomer_${selectedSite}_ESKER_${date}.csv`;
 
-    // Show summary
-    const sum = document.getElementById("summary");
-    const site = getSelectedSite();
-    const date = todayISO();
-    const outName = `synthomer_${site}_ESKER_${date}.csv`;
+        const summary = document.getElementById("summary");
+        summary.style.display = "block";
+        summary.textContent =
+            `Total lines: ${stats.total}\n` +
+            `Header skipped: ${stats.skipped}\n` +
+            `Changed lines: ${stats.changed}\n` +
+            `Unchanged lines: ${stats.unchanged}\n` +
+            `Output filename: ${outName}`;
 
-    sum.style.display = "block";
-    sum.textContent =
-      `Total lines: ${stats.total}\n` +
-      `Header skipped: ${stats.skipped}\n` +
-      `Changed lines: ${stats.changed}\n` +
-      `Unchanged lines: ${stats.unchanged}\n` +
-      `Output filename: ${outName}`;
+        document.getElementById("saveBtn").style.display = "block";
+        document.getElementById("mailBtn").style.display = "block";
+    };
+    reader.readAsText(file);
+};
 
-    // Enable Save As button
-    document.getElementById("saveBtn").style.display = "inline-block";
-  };
+document.getElementById("saveBtn").onclick = function() {
+    if (!processedCSV) return;
+    const date = document.getElementById("dateInput").value;
+    const outName = `synthomer_${selectedSite}_ESKER_${date}.csv`;
+    const blob = new Blob([processedCSV], {type:"text/csv"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = outName;
+    a.click();
+};
 
-  reader.readAsText(file);
-}
-
-// SAVE AS (forces Save-As dialog)
-function saveFile() {
-  if (!processedCSV) {
-    alert("Nothing to save — please fix dates first.");
-    return;
-  }
-
-  const site = getSelectedSite();
-  const date = todayISO();
-  const outName = `synthomer_${site}_ESKER_${date}.csv`;
-
-  const blob = new Blob([processedCSV], {type:"text/csv"});
-  const url = URL.createObjectURL(blob);
-
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = outName;
-
-  // Force Save-As dialog if browser is configured for it
-  a.click();
-}
+document.getElementById("mailBtn").onclick = function() {
+    const date = document.getElementById("dateInput").value;
+    const outName = `synthomer_${selectedSite}_ESKER_${date}.csv`;
+    const subject = encodeURIComponent(`ESKER export for ${selectedSite} – ${date}`);
+    const body = encodeURIComponent(`Hello,\n\nPlease attach:\n${outName}\n\nRegards,`);
+    window.location.href = `mailto:libor.martinek@synthomer.com?subject=${subject}&body=${body}`;
+};
 </script>
 
 </body>
