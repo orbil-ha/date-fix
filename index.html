@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Synthomer CSV Date Fixer</title>
+<style>
+body { font-family:sans-serif; margin:40px; }
+h2 { color:#0055aa; }
+button { padding:10px 20px; margin-top:10px; cursor:pointer; }
+</style>
+</head>
+<body>
+
+<h2>Synthomer CSV Date Fixer (Client‑side only)</h2>
+
+<input type="file" id="fileInput" accept=".csv">
+<br><br>
+<button onclick="processFile()">Fix Dates</button>
+
+<script>
+function processLine(line, isHeader) {
+    if (isHeader) return line;
+
+    function fixDateWithTime(s, col) {
+        const re = new RegExp(
+          '^((?:"(?:[^"]|"")*",){' + (col-1) + '}")' +
+          '(\\d{2})\\/(\\d{2})\\/(\\d{4}) \\d{2}:\\d{2}:\\d{2}(".*)$'
+        );
+        return s.replace(re, (m,p1,d,mth,y,p2) => `${p1}${y}-${mth}-${d}${p2}`);
+    }
+
+    function fixDateOnly(s, col) {
+        const re = new RegExp(
+          '^((?:"(?:[^"]|"")*",){' + (col-1) + '}")' +
+          '(\\d{2})\\/(\\d{2})\\/(\\d{4})(".*)$'
+        );
+        return s.replace(re, (m,p1,d,mth,y,p2) => `${p1}${y}-${mth}-${d}${p2}`);
+    }
+
+    let out = line;
+    out = fixDateWithTime(out, 3);
+    out = fixDateWithTime(out, 4);
+    out = fixDateOnly(out, 11);
+    out = fixDateOnly(out, 13);
+    return out;
+}
+
+function processFile() {
+    const file = document.getElementById('fileInput').files[0];
+    if (!file) { alert("Please choose a CSV file."); return; }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const lines = e.target.result.split(/\r?\n/);
+        const outLines = lines.map((l,i) => processLine(l, i === 0));
+        const out = outLines.join("\n");
+
+        const blob = new Blob([out], {type:"text/csv"});
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "fixed_" + file.name;
+        a.click();
+    };
+    reader.readAsText(file);
+}
+</script>
+
+</body>
+</html>
