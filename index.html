@@ -9,114 +9,57 @@ h2 { color:#0055aa; }
 button { padding:10px 25px; margin-top:15px; cursor:pointer; }
 .section { margin-bottom:20px; }
 label { display:block; margin-top:6px; }
-input[type=text] { width:100%; padding:8px; margin-top:5px; }
+input[type=file] { margin-top:10px; }
 .summaryBox {
   background:#eef7ff; border:1px solid #aaccee; padding:12px; margin-top:20px;
   white-space:pre-line;
 }
+#saveBtn { display:none; }
 </style>
 </head>
 <body>
 
 <h2>Synthomer CSV Date Fixer (PC1 / P11)</h2>
 
-<!-- Site Selection -->
+<!-- Step 1: Select Site -->
 <div class="section">
-  <strong>Select Site:</strong><br><br>
+  <strong>1. Select Site:</strong><br><br>
   <label><input type="radio" name="site" value="PC1" checked> PC1 System</label>
   <label><input type="radio" name="site" value="P11"> P11 System</label>
 </div>
 
-<!-- Save As Location -->
+<!-- Step 2: Choose CSV File -->
 <div class="section">
-  <strong>Save As Location (prefix only):</strong>
-  <input type="text" id="saveLocationInput" placeholder="e.g. \\server\\folder\\ or C:\\Users\\You\\Downloads\\" />
-  <button id="browseBtn" type="button">Browse…</button>
-
-  <div id="currentSaveLoc" style="margin-top:8px; color:#444; font-size:14px;">
-    Current: (not set)
-  </div>
-</div>
-
-<!-- File Input -->
-<div class="section">
+  <strong>2. Choose CSV File:</strong><br>
   <input type="file" id="fileInput" accept=".csv">
 </div>
 
-<button onclick="processFile()">Fix Dates & Download</button>
+<!-- Step 3: Fix Dates -->
+<button id="fixBtn" onclick="fixDates()">3. Fix Dates</button>
 
+<!-- Step 4: Summary -->
 <div id="summary" class="summaryBox" style="display:none;"></div>
 
+<!-- Step 5: Save As Dialog -->
+<button id="saveBtn" onclick="saveFile()">4. Save As…</button>
+
 <script>
-// ------------------------------
-// Load Save Location at Startup
-// ------------------------------
-function loadSaveLocation() {
-  const loc = localStorage.getItem("saveLocation") || "";
-  document.getElementById("saveLocationInput").value = loc;
-  updateSaveLocationDisplay(loc);
-}
+// Global memory for processed output
+let processedCSV = "";
 
-function updateSaveLocationDisplay(loc) {
-  document.getElementById("currentSaveLoc").textContent =
-    "Current: " + (loc === "" ? "(not set)" : loc);
-}
-
-// Save when typing
-document.getElementById("saveLocationInput").addEventListener("input", (e) => {
-  const value = e.target.value;
-  localStorage.setItem("saveLocation", value);
-  updateSaveLocationDisplay(value);
-});
-
-loadSaveLocation();
-
-// ------------------------------
-// Folder Picker (Chrome / Edge)
-// ------------------------------
-document.getElementById("browseBtn").addEventListener("click", async () => {
-  if (!window.showDirectoryPicker) {
-    alert("Your browser does not support folder selection.");
-    return;
-  }
-
-  try {
-    const dirHandle = await window.showDirectoryPicker();
-    const folderName = dirHandle.name;
-
-    let prefix = localStorage.getItem("saveLocation") || "";
-
-    // Add slash if needed
-    if (!prefix.endsWith("/") && !prefix.endsWith("\\")) prefix += "/";
-
-    prefix += folderName + "/";
-
-    document.getElementById("saveLocationInput").value = prefix;
-    localStorage.setItem("saveLocation", prefix);
-    updateSaveLocationDisplay(prefix);
-  }
-  catch (err) {
-    console.log("Folder selection canceled or failed:", err);
-  }
-});
-
-// ------------------------------
-// Site Selection Helper
-// ------------------------------
+// Helper: which site selected?
 function getSelectedSite() {
   const radios = document.getElementsByName("site");
   for (let r of radios) if (r.checked) return r.value;
   return "unknown";
 }
 
+// Today's date yyyy-mm-dd
 function todayISO() {
-  const d = new Date();
-  return d.toISOString().split("T")[0];
+  return new Date().toISOString().split("T")[0];
 }
 
-// ------------------------------
-// CSV Line Transformer
-// ------------------------------
+// Transform a line in the CSV
 function processLine(line, isHeader, stats) {
   if (isHeader) {
     stats.skipped++;
@@ -153,35 +96,30 @@ function processLine(line, isHeader, stats) {
   return out;
 }
 
-// ------------------------------
-// Process File
-// ------------------------------
-function processFile() {
+// MAIN: Process the file
+function fixDates() {
   const file = document.getElementById('fileInput').files[0];
-  if (!file) { alert("Please choose a CSV file."); return; }
-
-  const site = getSelectedSite();
-  const date = todayISO();
-
-  const savePrefix = localStorage.getItem("saveLocation") || "";
-  const outName = `${savePrefix}synthomer_${site}_ESKER_${date}.csv`;
+  if (!file) {
+    alert("Please choose a CSV file first.");
+    return;
+  }
 
   const reader = new FileReader();
   reader.onload = function(e) {
-    const lines = e.target.result.split(/\r?\n/);
+    const text = e.target.result;
+    const lines = text.split(/\r?\n/);
 
-    const stats = {
-      total: lines.length,
-      changed: 0,
-      unchanged: 0,
-      skipped: 0
-    };
+    const stats = { total: lines.length, changed: 0, unchanged: 0, skipped: 0 };
 
-    const outLines = lines.map((l,i)=>processLine(l, i === 0, stats));
-    const out = outLines.join("\n");
+    const outLines = lines.map((l,i)=>processLine(l, i===0, stats));
+    processedCSV = outLines.join("\n");
 
     // Show summary
     const sum = document.getElementById("summary");
+    const site = getSelectedSite();
+    const date = todayISO();
+    const outName = `synthomer_${site}_ESKER_${date}.csv`;
+
     sum.style.display = "block";
     sum.textContent =
       `Total lines: ${stats.total}\n` +
@@ -190,17 +128,33 @@ function processFile() {
       `Unchanged lines: ${stats.unchanged}\n` +
       `Output filename: ${outName}`;
 
-    // Trigger download
-    const blob = new Blob([out], {type:"text/csv"});
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = outName;
-    a.click();
+    // Enable Save As button
+    document.getElementById("saveBtn").style.display = "inline-block";
   };
 
   reader.readAsText(file);
+}
+
+// SAVE AS (forces Save-As dialog)
+function saveFile() {
+  if (!processedCSV) {
+    alert("Nothing to save — please fix dates first.");
+    return;
+  }
+
+  const site = getSelectedSite();
+  const date = todayISO();
+  const outName = `synthomer_${site}_ESKER_${date}.csv`;
+
+  const blob = new Blob([processedCSV], {type:"text/csv"});
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = outName;
+
+  // Force Save-As dialog if browser is configured for it
+  a.click();
 }
 </script>
 
